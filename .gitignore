@@ -1,0 +1,49 @@
+        # Bytecode files
+        __pycache__/
+        *.pyc
+        *.pyo
+
+        # Virtual environment
+        venv/
+        .venv/
+
+        # Distribution / packaging
+        dist/
+        build/
+        *.egg-info/
+
+        # Log files and databases
+        *.log
+        *.sql
+        *.sqlite
+
+        #IDE
+        .idea/
+
+
+        # Dependencies
+        node_modules/
+
+        # Distribution
+        dist/
+        build/
+
+        #IDE
+        .vscode/
+
+
+        # Executables
+        *.exe
+        *.out
+
+        # Object files
+        *.o
+
+        # Libraries
+        *.a
+        *.lib
+        *.so
+        *.dylib
+
+        #IDE
+        .vscode/
