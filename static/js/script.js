@@ -1,5 +1,8 @@
 async function uploadVideo() {
     const videoInput = document.getElementById('videoInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const translateBtn = document.getElementById('translateBtn');
+
     if (videoInput.files.length === 0) {
         alert("Please select a video file to upload.");
         return;
@@ -8,9 +11,8 @@ async function uploadVideo() {
     const formData = new FormData();
     formData.append('file', videoInput.files[0]);
 
-    // Disable buttons to prevent multiple uploads
-    document.getElementById('uploadBtn').disabled = true;
-    document.getElementById('translateBtn').disabled = true;
+    uploadBtn.disabled = true;
+    translateBtn.disabled = true;
 
     try {
         const response = await fetch('/upload', {
@@ -19,149 +21,149 @@ async function uploadVideo() {
         });
 
         const data = await response.json();
-        if (response.ok) {
-            alert(data.message);
-
-            // Enable Translate button after successful upload
-            document.getElementById('translateBtn').disabled = false;
-
-            // Show the video and subtitles
-            showVideoThumbnail(data.video_path); 
-        } else {
-            alert("Failed to upload video: " + (data.error || "Unknown error"));
+        if (!response.ok) {
+            throw new Error(data.error || "Upload failed.");
         }
-    } catch (error) {
-        alert("An error occurred during the upload.");
-        console.error(error);
+
+        alert(data.message);
+        translateBtn.disabled = false;
+        showVideoThumbnail(data.video_path);
+
+    } catch (err) {
+        alert("Upload failed: " + err.message);
+        console.error(err);
     } finally {
-        document.getElementById('uploadBtn').disabled = false;
+        uploadBtn.disabled = false;
     }
 }
 
-// Function to display video with subtitles
 function showVideoThumbnail(videoPath) {
     const videoElement = document.getElementById('videoPlayer');
     const subtitleTrack = document.getElementById('subtitleTrack');
-    const videoUrl = `/get_video?video_path=${videoPath}`;
 
-    videoElement.src = videoUrl;
-    subtitleTrack.src = `/get_subtitles?video_path=${videoPath}`; // Link to subtitle file
+    videoElement.src = `/get_video?video_path=${encodeURIComponent(videoPath)}`;
+    subtitleTrack.src = `/get_subtitles?video_path=${encodeURIComponent(videoPath)}`;
 }
 
-// Function to download translated subtitles
-function downloadTranslatedSubtitles() {
-    fetch('/download_translated_subtitles')
-        .then(response => {
-            if (response.ok) {
-                return response.blob();
-            } else {
-                throw new Error('Subtitle file not found');
-            }
-        })
-        .then(blob => {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'translated_subtitles.vtt';  // Updated to correct format
-            a.click();
-            URL.revokeObjectURL(url);
-        })
-        .catch(error => {
-            console.error('Error downloading subtitles:', error);
-        });
-}
-
-// Function to start translation process
 async function translateSubtitles() {
     const videoInput = document.getElementById('videoInput');
+    const translateBtn = document.getElementById('translateBtn');
+    const downloadVideoBtn = document.getElementById('downloadBtn');
+    const downloadSubtitleBtn = document.getElementById('downloadSubtitleBtn');
+    const progressBar = document.getElementById('progressBar');
+    const selectedLanguage = document.getElementById('languageSelect').value;
+
     if (videoInput.files.length === 0) {
         alert("Please upload a video first.");
         return;
     }
 
-    const selectedLanguage = document.getElementById('languageSelect').value;
-    const progressBar = document.getElementById('progressBar');
+    translateBtn.disabled = true;
+    downloadVideoBtn.disabled = true;
+    downloadSubtitleBtn.disabled = true;
     progressBar.style.display = 'block';
-    progressBar.value = 5; // Set initial value
+    progressBar.value = 5;
+
+    const videoFilename = videoInput.files[0].name;
 
     try {
-        // Start checking progress in parallel
-        const progressChecker = checkProgress();
+        const progressCheck = checkProgress();
 
         const response = await fetch('/translate', {
             method: 'POST',
-            body: JSON.stringify({ 
-                video_file_path: videoInput.files[0].name,  // Ensure correct filename is used
-                target_language: selectedLanguage 
-            }),
-            headers: { 'Content-Type': 'application/json' }
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                video_file_path: videoFilename,
+                target_language: selectedLanguage
+            })
         });
 
+        const data = await response.json();
         if (!response.ok) {
-            throw new Error("Translation request failed.");
+            throw new Error(data.error || "Translation failed.");
         }
 
-        const data = await response.json();
         alert(data.message);
+        downloadVideoBtn.disabled = false;
+        downloadSubtitleBtn.disabled = false;
+        await progressCheck;
 
-        document.getElementById('downloadBtn').disabled = false;
-        document.getElementById('downloadSubtitleBtn').disabled = false;
-
-        // Wait for progress check to complete
-        await progressChecker;
-
-    } catch (error) {
-        alert("An error occurred while translating subtitles.");
-        console.error(error);
+    } catch (err) {
+        alert("Translation error: " + err.message);
+        console.error(err);
     } finally {
+        translateBtn.disabled = false;
         progressBar.style.display = 'none';
     }
 }
 
-// Function to track translation progress
 async function checkProgress() {
     const progressBar = document.getElementById('progressBar');
-    progressBar.style.display = 'block';
-
     let progress = 0;
+
     while (progress < 100) {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Check every 2 seconds
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
         try {
-            const response = await fetch('/progress');
-            if (!response.ok) {
-                throw new Error("Failed to fetch progress.");
-            }
+            const res = await fetch('/progress');
+            const data = await res.json();
 
-            const data = await response.json();
             progress = data.progress || 0;
             progressBar.value = progress;
 
             if (progress >= 100) break;
-
-        } catch (error) {
-            console.error("Error fetching progress:", error);
+        } catch (err) {
+            console.error("Progress check failed:", err);
             break;
         }
     }
 
     progressBar.value = 100;
+    alert("Translation is completed. You can download now.");
 }
 
-// Function to download the video with subtitles
-async function downloadVideoWithSubtitles() {
-    const response = await fetch('/download_video_with_subtitles', { method: 'GET' });
+async function downloadTranslatedSubtitles() {
+    try {
+        const response = await fetch('/download_translated_subtitles');
+        if (!response.ok) {
+            throw new Error("Subtitle file not found.");
+        }
 
-    if (response.ok) {
-        const data = await response.blob();
-        const url = URL.createObjectURL(data);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'translated_subtitles.vtt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+    } catch (err) {
+        alert("Error downloading subtitles: " + err.message);
+        console.error(err);
+    }
+}
+
+async function downloadVideoWithSubtitles() {
+    try {
+        const response = await fetch('/download_video_with_subtitles');
+        if (!response.ok) {
+            throw new Error("Download failed.");
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = "video_with_subtitles.mp4";  // Set the default download file name
+        link.download = "video_with_subtitles.mp4";
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-    } else {
-        alert("Error downloading video with subtitles.");
+        URL.revokeObjectURL(url);
+
+    } catch (err) {
+        alert("Download error: " + err.message);
+        console.error(err);
     }
 }
